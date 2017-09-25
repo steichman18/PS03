@@ -1,6 +1,6 @@
 ---
 title: "STAT/MATH 495: Problem Set 03"
-author: "WRITE YOUR NAME HERE"
+author: "Sarah Teichman"
 date: "2017-09-26"
 output:
   html_document:
@@ -15,9 +15,12 @@ output:
 knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=4.5)
 
 # Load packages
+library(Metrics)
 library(tidyverse)
+library(mosaic)
 data1 <- read_csv("data/data1.csv")
 data2 <- read_csv("data/data2.csv")
+set.seed(1)
 ```
 
 
@@ -27,18 +30,112 @@ For both `data1` and `data2` tibbles (a tibble is a data frame with some
 [metadata](https://blog.rstudio.com/2016/03/24/tibble-1-0-0#tibbles-vs-data-frames) attached):
 
 * Find the splines model with the best out-of-sample predictive ability.
-* Create a visualizaztion arguing why you chose this particular model.
-* Create a visualizaztion of this model plotted over the given $(x_i, y_i)$ points for $i=1,\ldots,n=3000$.
+* Create a visualization arguing why you chose this particular model.
+* Create a visualization of this model plotted over the given $(x_i, y_i)$ points for $i=1,\ldots,n=3000$.
 * Give your estimate $\widehat{\sigma}$ of $\sigma$ where the noise component $\epsilon_i$ is distributed with mean 0 and standard deviation $\sigma$.
 
+# Writing cv function
+
+```{r}
+cv <- function(data,k,dOf) {
+  #split into k groups 
+  data <- shuffle(data)
+  label <- c(rep(seq(1:k),nrow(data)/k))
+  score <- numeric(k)
+  #loop i=1:k times
+  for (i in 1:k) {
+    data_trn <- filter(data,label!=i)  
+    data_tst <- filter(data,label==i)
+    model <- smooth.spline(x=data_trn$x,y=data_trn$y,df=dOf)
+    output <- predict(model,data_tst$x)
+    score[i] <- rmse(output$y,data_tst$y)
+  }
+  return(mean(score))
+  #average k scores
+}
+```
 
 # Data 1
 
 ```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#looking at distribution of data
+ggplot(data1,aes(x=x,y=y))+geom_point()+ggtitle("Data1")
+
+#running the crossvalidation function for degree of freedom values from 2 to 50
+dflst <- seq(2,50)
+score <- numeric(49)
+for (i in 2:50) {
+  score[i-1] <- cv(data1,k=10,dOf=i)
+}
+cvdf <- data.frame(dflst,score)
+#plotting the score (rmse) vs degree of freedom for each model 
+ggplot(cvdf,aes(x=dflst,y=score))+geom_point()+ggtitle("Crossvalidation RMSE by Degree of Freeom value")+xlab("Degrees of Freedom")+ylab("Score (RMSE)")
+minDF <- which(cvdf$score==min(cvdf$score));minDF
+
+#spline with the optimal degrees of freedom
+model <- smooth.spline(x=data1$x,y=data1$y,df=minDF)
+
+#plotting the data with the spline model
+splines_model_tidy <- model %>% 
+  broom::augment() 
+ggplot(splines_model_tidy, aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red") + ggtitle("Data1 and Fitted Spline Model")
+
+#finding sigma
+sd1 <- sd(splines_model_tidy$.resid,na.rm=T)
+splines_model_tidy <- model %>% 
+  broom::augment() 
+ep <- rnorm(3000,0,sd1)
+y_new <- splines_model_tidy$.fitted + ep
+ggplot(splines_model_tidy, aes(x=x)) +
+  geom_point(aes(y=y)) +
+  ggtitle("Data1 and Fitted Spline Model with New Data") + 
+  geom_point(aes(y=y_new),color="blue",alpha=0.3) +
+  geom_line(aes(y=.fitted), col="red") 
+
+
 ```
+
+My predicted value for $\sigma$ for data1 is `r sd1` for a model with `r minDF` degrees of freedom. 
 
 # Data 2
 
 ```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#looking at distribution of data
+ggplot(data2,aes(x=x,y=y))+geom_point()+ggtitle("Data2")
+
+#running the crossvalidation function for degree of freedom values from 2 to 50
+dflst <- seq(2,50)
+score <- numeric(49)
+for (i in 2:50) {
+  score[i-1] <- cv(data2,k=10,dOf=i)
+}
+cvdf <- data.frame(dflst,score)
+#plotting the score (rmse) vs degree of freedom for each model 
+ggplot(cvdf,aes(x=dflst,y=score))+geom_point()+ggtitle("Crossvalidation RMSE by Degree of Freeom value")+xlab("Degrees of Freedom")+ylab("Score (RMSE)")
+minDF <- which(cvdf$score==min(cvdf$score));minDF
+
+#spline with the optimal degrees of freedom
+model <- smooth.spline(x=data2$x,y=data2$y,df=minDF)
+
+#plotting the data with the spline model
+splines_model_tidy <- model %>% 
+  broom::augment() 
+ggplot(splines_model_tidy, aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red") + ggtitle("Data2 and Fitted Spline Model")
+
+#finding sigma
+sd2 <- sd(splines_model_tidy$.resid,na.rm=T)
+
+ep <- rnorm(3000,0,sd2)
+y_new <- splines_model_tidy$.fitted + ep
+ggplot(splines_model_tidy, aes(x=x)) +
+  geom_point(aes(y=y)) +
+  ggtitle("Data1 and Fitted Spline Model with New Data") + 
+  geom_point(aes(y=y_new),color="blue",alpha=0.3) +
+  geom_line(aes(y=.fitted), col="red")
 ```
 
+My predicted value for $\sigma$ for data2 is `r sd2` for a model with `r minDF` degrees of freedom. 
